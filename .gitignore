@@ -1,0 +1,10 @@
+*.a
+*.d
+*.o
+200mpg/firmware
+200mpg/build
+relayPortao/firmware
+relayPortao/build
+testePwm/firmware
+testePwm/build
+
