@@ -16,8 +16,9 @@ int stateTo=0;
 
 u_int portArray[]={16,5,4,0,2,14,12,13};//D0, D1, D2, D3, D4, D5, D6, D7 lolin esp8266
 
+u_int sensorInput = 15;
 static QueueHandle_t tsqueue;
-
+scanTime = 100;
 
 
 /* This task uses the high level GPIO API (esp_gpio.h) to blink an LED.
@@ -97,7 +98,7 @@ memset(cmdBuff,0,10);
 	for(;;)
 	{
 		charNumber = uart_getc_nowait(0);
-		vTaskDelay(1 / portTICK_PERIOD_MS);
+		vTaskDelay(10 / portTICK_PERIOD_MS);
 
 		if(charNumber != -1)
 		{	
@@ -166,17 +167,42 @@ memset(cmdBuff,0,10);
 }
 
 
+
+
+void monitoraSensor(void *pvParameters)
+{
+	int32_t now = xTaskGetTickCount();
+	int32_t nextEventTime = now;
+	gpio_enable(sensorInput, GPIO_INPUT);
+	uint8_t scan = 0, scanPrev=0;
+
+	while(1)	
+	{
+		vTaskDelay(scanTime/portTICK_PERIOD_MS);
+		scan = gpio_read(sensorInput);
+		if(scan != scanPrev)
+		{
+			now = xTaskGetTickCount();
+			printf("switch detectec at: [%d]ms\n",now);
+		}
+		scanPrev = scan;
+	}
+
+
+
+}
+
+
 void user_init(void)
 {
      uart_set_baud(0, 115200);
 	tsqueue = xQueueCreate(10, sizeof(char));
 
 //    printf("SDK version:%s\n", sdk_system_get_sdk_version());
-    xTaskCreate(blinkenTask, "blinkenTask", 256, NULL, 2, NULL);
+	xTaskCreate(blinkenTask, "blinkenTask", 256, NULL, 2, NULL);
+	xTaskCreate(uartReceivData, "uartReceivData", 256, NULL, 1, NULL);
 
-
-
-xTaskCreate(uartReceivData, "uartReceivData", 256, NULL, 1, NULL);
+	xTaskCreate(monitoraSensor, "monitoraSensor", 256, NULL, 1, NULL);
 
 
 
