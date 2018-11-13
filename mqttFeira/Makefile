@@ -1,3 +1,3 @@
 PROGRAM=mqttFeira
-EXTRA_COMPONENTS = extras/paho_mqtt_c
+EXTRA_COMPONENTS =  ~/esp-open-rtos/extras/pwm
 include ../../common.mk

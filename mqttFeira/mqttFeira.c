@@ -5,50 +5,234 @@
 
 #include <FreeRTOS.h>
 #include <task.h>
-#include <ssid_config.h>
+
+#include <pwm.h>
+//#include <ssid_config.h>
 
 #include <espressif/esp_sta.h>
 #include <espressif/esp_wifi.h>
 
-#include <paho_mqtt_c/MQTTESP8266.h>
+/*#include <paho_mqtt_c/MQTTESP8266.h>
 #include <paho_mqtt_c/MQTTClient.h>
 
 #include <semphr.h>
-
+*/
 
 /* You can use http://test.mosquitto.org/ to test mqtt_client instead
  * of setting up your own MQTT server */
 
+/*
 #define WIFI_SSID "TCTSmartPhones"
 #define WIFI_PASS "TCTSMARTPHONES"
-
-
 #define MQTT_HOST ("192.168.23.31")
 #define MQTT_PORT 1883
-
 #define MQTT_USER NULL
 #define MQTT_PASS NULL
+*/
 
+/*
 SemaphoreHandle_t wifi_alive;
 QueueHandle_t publish_queue;
 #define PUB_MSG_LEN 16
 
+*/
+
+//sensor keyence para feira
+//u_int sensorInput = 15;//d8
+//u_int scanTime = 100;
+//u_int portArray[]={16,5,4,0,2,14,12,13,15};//D0, D1, D2, D3, D4, D5, D6, D7 lolin esp8266
+
+#define MAX_INPUT_NUMBER 4
+u_int portArray[]={16,5,4,14}; //d0 d1 d2 d5
+
+
+//d0 d1 d2 d5  ProdutoErro, fimProducao/reset, paradaManutencao, contadorProduto
+
+
+
+#define topic1Good "pieceProduction,%d,good\n"
+#define topic1Bad "pieceProduction,%d,bad\n"
+
+
+//state/timeIni,timeFin,
+#define topic2PauseStart "state,%d\n"
+#define topic2PauseStop "state,%d\n"
+
+
+
+#define topic3InitProd "startStatus,%d,init\n"
+#define topic3EndProd "startStatus,%d,end\n"
+
+
+
+
+#define BOTAO_PRODUCAO 1
+#define BOTAO_MANUTENCAO 2
+#define BOTAO_PECAS_DEFEITO 0
+#define SENSOR_PRODUCAO 3
+
+
+
+
+uint8_t toMove = 0;
+
+
+typedef enum
+{
+    PRODUZINDO = 0,//produzindo, naoManutencao, pecaOk
+    PARADO//padado, em Manutencao, pecaDefeituosa
+} STATE_MAIN;
+
+
+STATE_MAIN producao = PARADO;
+
+STATE_MAIN manutencao = PRODUZINDO;
+
+STATE_MAIN pecaSemDefeito = PRODUZINDO;
+
 static void  beat_task(void *pvParameters)
 {
+
+
+
     TickType_t xLastWakeTime = xTaskGetTickCount();
-    char msg[PUB_MSG_LEN];
+   // char msg[PUB_MSG_LEN];
     int count = 0;
 
-    while (1) {
-        vTaskDelayUntil(&xLastWakeTime, 1000 / portTICK_PERIOD_MS);
-        printf("beat\r\n");
-        snprintf(msg, PUB_MSG_LEN, "Beat %d\r\n", count++);
-        if (xQueueSend(publish_queue, (void *)msg, 0) == pdFALSE) {
-            printf("Publish queue overflow.\r\n");
+
+
+    int32_t now = xTaskGetTickCount(), tempoParada = xTaskGetTickCount();
+    int32_t nextEventTime = now;
+    int i; 
+    uint8_t scan[MAX_INPUT_NUMBER], scanPrev[MAX_INPUT_NUMBER];
+
+
+    vTaskDelayUntil(&xLastWakeTime, 1000 / portTICK_PERIOD_MS);//limpar entradas temporárias
+    for(i=0; i < MAX_INPUT_NUMBER; i++)
+    {
+        scan[i] = gpio_read(portArray[i]);
+        scanPrev[i] = scan[i];
+    }
+
+
+
+    while (1)
+    {
+        vTaskDelayUntil(&xLastWakeTime, 10 / portTICK_PERIOD_MS);
+
+        //now = xTaskGetTickCount();
+        for(i=0; i < MAX_INPUT_NUMBER; i++)
+        {
+            scan[i] = gpio_read(portArray[i]);
+            now = xTaskGetTickCount();
+            if(scan[i] != scanPrev[i])
+            {
+                scanPrev[i] = scan[i];
+
+               
+               // printf("switch [%u] d[%d] detectec at: [%d]ms\n",scan[i],i,now);
+
+                if(  (scan[BOTAO_PRODUCAO] == 1)  && (scan[i] == 1) ) 
+                {
+                   // if(manutencao == PRODUZINDO)
+                   // {
+                        if(producao == PARADO) 
+                        {
+                                producao = PRODUZINDO;
+                                if(manutencao == PRODUZINDO ) printf(topic3InitProd,now*10);
+                        }
+                        else 
+                        {
+                            producao = PARADO;
+                             if(manutencao == PRODUZINDO ) printf(topic3EndProd,now*10);
+                        }
+                   // }
+                    //printf("mudou estado\n");
+                }
+
+
+
+                if( i == BOTAO_MANUTENCAO ) //tratar somente botao manutencao
+                {
+                    if(scan[BOTAO_MANUTENCAO] == 1) //se apertou comeca a contagem de parada
+                    {
+                            manutencao = PARADO;
+                            producao = PARADO;
+                            
+                            printf(topic2PauseStart,now*10);
+                           // printf("entrou em parada manutencao");
+                    }
+                    else 
+                    {
+                            manutencao == PRODUZINDO;//finalizar a contagem de parda e enviar o evento
+                            printf(topic2PauseStop,now*10);
+                            
+                    }
+                }
+
+                
+                if( i == BOTAO_PECAS_DEFEITO )//para definir o tipo de peca a se preduzir
+                {
+
+                    if(scan[BOTAO_PECAS_DEFEITO] == 1) pecaSemDefeito = PARADO;
+                    else pecaSemDefeito = PRODUZINDO;
+
+
+
+                }
+                
+
+                if( i == SENSOR_PRODUCAO )
+                {
+
+                    if(producao == PRODUZINDO)  //somente notificar pecas se o estado for produzindo
+                    if(scan[SENSOR_PRODUCAO] == 1) //se houver novo produto
+                    {
+                        if(pecaSemDefeito == PRODUZINDO)   printf(topic1Good,now*10);
+                        else  printf(topic1Bad,now*10);
+
+                    }
+
+
+                }
+
+
+
+/*                snprintf(msg, PUB_MSG_LEN, "Beat %d,%d\r\n", i,scan[i]);
+
+                if (xQueueSend(publish_queue, (void *)msg, 0) == pdFALSE) 
+                {
+                    printf("Publish queue overflow.\r\n");
+
+                }
+
+*/
+
+            }
+            
         }
+        
+
+        if(producao == PRODUZINDO)
+        {
+
+           toMove = 1; 
+        }
+        else
+        {
+
+            toMove = 0;
+        }
+
+
+
+
+
+
+
     }
 }
-
+/*
 static void  topic_received(mqtt_message_data_t *md)
 {
     int i;
@@ -214,47 +398,75 @@ static void  wifi_task(void *pvParameters)
     }
 }
 
+*/
 
 
-//sensor keyence para feira
-//u_int sensorInput = 15;//d8
-//u_int scanTime = 100;
-u_int portArray[]={16,5,4,0,2,14,12,13,15};//D0, D1, D2, D3, D4, D5, D6, D7 lolin esp8266
+#define PWM1_PIN 12 //d6 pin
 
-#define MAX_INPUT_NUMBER 4
-
-void monitoraSensor(void *pvParameters)
+void taskPwm(void *pvParameters)
 {
-    int32_t now = xTaskGetTickCount();
-    int32_t nextEventTime = now;
-    int i; 
-
-    
-    
-    uint8_t scan[MAX_INPUT_NUMBER], scanPrev[MAX_INPUT_NUMBER];
+//    printf("Hello from taskPwm!\r\n");
+    uint32_t const init_count = 1441;
+    uint32_t count = init_count;
 
 
 
-    while(1)    
+    uint8_t pins[1];
+    //printf("pwm_init(1, [%d])\n",PWM1_PIN);
+    pins[0] = PWM1_PIN;
+    pwm_init(1, pins, false);
+   // printf("pwm_set_freq(1000)     # 1 kHz\n");
+    pwm_set_freq(50);
+   // printf("pwm_set_duty(UINT16_MAX/2)     # 50%%\n");
+    pwm_set_duty(UINT16_MAX/2);
+   // printf("pwm_start()\n");
+    pwm_start();
+
+    uint8_t state=0;
+
+    while(1)
     {
-        vTaskDelay(1000/portTICK_PERIOD_MS);
-        printf(".\n");
-        for(i=0; i < 4; i++)
-        {
-            scan[i] = gpio_read(portArray[i]);
+        vTaskDelay(500 / portTICK_PERIOD_MS);
+  //      printf("duty cycle set to %d/UINT16_MAX%%\r\n", count);
 
-            if(scan[i] != scanPrev[i])
-            {
-                now = xTaskGetTickCount();
-                printf("switch [%u] d[%d] detectec at: [%d]ms\n",scan[i],i,now);
-            }
-            scanPrev[i] = scan[i];
+
+        if(toMove)
+        {
+            pwm_set_duty(count);
+     //       printf("to move %u\n", count);
+
+            count += UINT16_MAX/50;
+            if (count > 3930) count = init_count;
+
+
+/*
+to move 0
+to move 1310
+to move 2620
+to move 3930
+to move 5240
+to move 6550
+to move 7860
+
+*/
+/*
+            if(state == 0){  count = 0; state = 1; continue;}
+
+           if(state == 1){  count =  UINT16_MAX/2; state = 2; continue;}
+
+            if(state == 1){  count = 1310; state = 0; continue;}
+*/
+        
+
+
+            
+            
         }
     }
-
-
-
 }
+
+
+
 
 
 void user_init(void)
@@ -263,9 +475,17 @@ void user_init(void)
 
 
     uart_set_baud(0, 115200);
-    printf("SDK version:%s\n", sdk_system_get_sdk_version());
+//    printf("SDK version:%s\n", sdk_system_get_sdk_version());
 
 
+
+ sdk_wifi_set_opmode(NULL_MODE);
+ /*
+sdk_wifi_softap_stop();
+*/
+ sdk_wDevDisableRx();
+    sdk_wDev_DisableTransmit();
+    sdk_phy_disable_agc();
 
 
 for(int i = 0; i < MAX_INPUT_NUMBER; i++) //primeiras 4 portas como entrada
@@ -273,19 +493,22 @@ for(int i = 0; i < MAX_INPUT_NUMBER; i++) //primeiras 4 portas como entrada
 
 
 
-
+/*
     vSemaphoreCreateBinary(wifi_alive);
     publish_queue = xQueueCreate(3, PUB_MSG_LEN);
 
+*/
+
+ //xTaskCreate(monitoraSensor, "monitoraSensor", 256, NULL, 1, NULL);
 
 
- xTaskCreate(monitoraSensor, "monitoraSensor", 256, NULL, 1, NULL);
 
-    xTaskCreate(&wifi_task, "wifi_task",  256, NULL, 2, NULL);
+
+//    xTaskCreate(&wifi_task, "wifi_task",  256, NULL, 2, NULL);
     xTaskCreate(&beat_task, "beat_task", 256, NULL, 3, NULL);
-    xTaskCreate(&mqtt_task, "mqtt_task", 1024, NULL, 4, NULL);
+//    xTaskCreate(&mqtt_task, "mqtt_task", 1024, NULL, 4, NULL);
 
-
+xTaskCreate(taskPwm, "taskPwm", 256, NULL, 2, NULL);
 
    
 
