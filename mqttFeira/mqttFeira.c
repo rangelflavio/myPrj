@@ -55,8 +55,8 @@ u_int portArray[]={16,5,4,14}; //d0 d1 d2 d5
 
 
 //state/timeIni,timeFin,
-#define topic2PauseStart "state,%d\n"
-#define topic2PauseStop "state,%d\n"
+#define topic2PauseStart "state,%d,initMaintenance\n"
+#define topic2PauseStop "state,%d,endMaintenance\n"
 
 
 
@@ -108,12 +108,12 @@ static void  beat_task(void *pvParameters)
 
 
     vTaskDelayUntil(&xLastWakeTime, 1000 / portTICK_PERIOD_MS);//limpar entradas temporárias
-    for(i=0; i < MAX_INPUT_NUMBER; i++)
+   /* for(i=0; i < MAX_INPUT_NUMBER; i++)
     {
         scan[i] = gpio_read(portArray[i]);
         scanPrev[i] = scan[i];
     }
-
+*/
 
 
     while (1)
@@ -164,7 +164,7 @@ static void  beat_task(void *pvParameters)
                     }
                     else 
                     {
-                            manutencao == PRODUZINDO;//finalizar a contagem de parda e enviar o evento
+                            manutencao = PRODUZINDO;//finalizar a contagem de parda e enviar o evento
                             printf(topic2PauseStop,now*10);
                             
                     }
