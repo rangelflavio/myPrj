@@ -7,4 +7,5 @@ relayPortao/firmware
 relayPortao/build
 testePwm/firmware
 testePwm/build
-
+*build*
+*firmware*
