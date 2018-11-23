@@ -72,6 +72,8 @@ u_int portArray[]={16,5,4,14}; //d0 d1 d2 d5
 #define SENSOR_PRODUCAO 3
 
 
+#define DEBUG printf
+
 
 
 uint8_t toMove = 0;
@@ -101,7 +103,7 @@ static void  beat_task(void *pvParameters)
 
 
 
-    int32_t now = xTaskGetTickCount(), tempoParada = xTaskGetTickCount();
+    int32_t now = xTaskGetTickCount(), tempoParada = xTaskGetTickCount(), tempoIniciouProducao = xTaskGetTickCount();
     int32_t nextEventTime = now;
     int i; 
     uint8_t scan[MAX_INPUT_NUMBER], scanPrev[MAX_INPUT_NUMBER];
@@ -139,7 +141,10 @@ static void  beat_task(void *pvParameters)
                         if(producao == PARADO) 
                         {
                                 producao = PRODUZINDO;
+
                                 if(manutencao == PRODUZINDO ) printf(topic3InitProd,now*10);
+
+                                tempoIniciouProducao = xTaskGetTickCount();
                         }
                         else 
                         {
@@ -157,15 +162,16 @@ static void  beat_task(void *pvParameters)
                     if(scan[BOTAO_MANUTENCAO] == 1) //se apertou comeca a contagem de parada
                     {
                             manutencao = PARADO;
-                            producao = PARADO;
+                           // producao = PARADO;
                             
                             printf(topic2PauseStart,now*10);
-                           // printf("entrou em parada manutencao");
+                     //       DEBUG("entrou em parada manutencao\n");
                     }
                     else 
                     {
                             manutencao = PRODUZINDO;//finalizar a contagem de parda e enviar o evento
                             printf(topic2PauseStop,now*10);
+                       //      DEBUG("terminou manutencao\n");
                             
                     }
                 }
@@ -213,10 +219,12 @@ static void  beat_task(void *pvParameters)
         }
         
 
-        if(producao == PRODUZINDO)
+        if((producao == PRODUZINDO) && (manutencao != PARADO))
         {
-
-           toMove = 1; 
+                   
+                toMove = 1; 
+               
+           
         }
         else
         {
@@ -225,7 +233,28 @@ static void  beat_task(void *pvParameters)
         }
 
 
+        if(producao == PRODUZINDO)
+        {
+            if(  (xTaskGetTickCount() - tempoIniciouProducao) > 479*100)
+            {
 
+
+                if(manutencao == PARADO) printf(topic2PauseStop,now*10);
+                    
+               
+
+
+                 //producao = PARADO;
+                 printf(topic3EndProd,now*10);
+                  tempoIniciouProducao = xTaskGetTickCount();
+                  printf(topic3InitProd,now*10);
+
+                if(manutencao == PARADO) printf(topic2PauseStart,now*10);
+
+
+            }
+
+        }
 
 
 
