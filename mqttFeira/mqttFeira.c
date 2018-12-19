@@ -5,7 +5,7 @@
 
 #include <FreeRTOS.h>
 #include <task.h>
-
+#include <esp/hwrand.h>
 #include <pwm.h>
 //#include <ssid_config.h>
 
@@ -42,8 +42,21 @@ QueueHandle_t publish_queue;
 //u_int scanTime = 100;
 //u_int portArray[]={16,5,4,0,2,14,12,13,15};//D0, D1, D2, D3, D4, D5, D6, D7 lolin esp8266
 
-#define MAX_INPUT_NUMBER 4
-u_int portArray[]={16,5,4,14}; //d0 d1 d2 d5
+#define MAX_INPUT_NUMBER 5
+u_int portArray[]={16,5,4,14,13}; //d0 d1 d2 d5
+
+#define PWM1_PIN 12 //d6 pin ouput
+
+
+#define linkLedPin 15
+
+
+#define BOTAO_PRODUCAO 1
+#define BOTAO_MANUTENCAO 2
+#define BOTAO_PECAS_DEFEITO 0
+#define SENSOR_PRODUCAO 3
+#define ON_OFF_BT 4
+
 
 
 //d0 d1 d2 d5  ProdutoErro, fimProducao/reset, paradaManutencao, contadorProduto
@@ -65,11 +78,6 @@ u_int portArray[]={16,5,4,14}; //d0 d1 d2 d5
 
 
 
-
-#define BOTAO_PRODUCAO 1
-#define BOTAO_MANUTENCAO 2
-#define BOTAO_PECAS_DEFEITO 0
-#define SENSOR_PRODUCAO 3
 
 
 #define DEBUG printf
@@ -95,18 +103,24 @@ STATE_MAIN pecaSemDefeito = PRODUZINDO;
 static void  beat_task(void *pvParameters)
 {
 
-
-
     TickType_t xLastWakeTime = xTaskGetTickCount();
    // char msg[PUB_MSG_LEN];
     int count = 0;
-
-
-
     int32_t now = xTaskGetTickCount(), tempoParada = xTaskGetTickCount(), tempoIniciouProducao = xTaskGetTickCount();
     int32_t nextEventTime = now;
-    int i; 
+    int i, n=0; 
     uint8_t scan[MAX_INPUT_NUMBER], scanPrev[MAX_INPUT_NUMBER];
+
+
+
+    gpio_enable(linkLedPin, GPIO_OUTPUT);
+    uint8_t estado = 0;
+    gpio_write(linkLedPin, estado);
+
+
+
+
+
 
 
     vTaskDelayUntil(&xLastWakeTime, 1000 / portTICK_PERIOD_MS);//limpar entradas temporárias
@@ -127,81 +141,90 @@ static void  beat_task(void *pvParameters)
         {
             scan[i] = gpio_read(portArray[i]);
             now = xTaskGetTickCount();
+
+
+
+
             if(scan[i] != scanPrev[i])
             {
-                scanPrev[i] = scan[i];
 
-               
-               // printf("switch [%u] d[%d] detectec at: [%d]ms\n",scan[i],i,now);
-
-                if(  (scan[BOTAO_PRODUCAO] == 1)  && (scan[i] == 1) ) 
+ /*               if(scan[ON_OFF_BT] == 1)//se botao ligado ok
                 {
-                   // if(manutencao == PRODUZINDO)
-                   // {
-                        if(producao == PARADO) 
+*/
+                    scanPrev[i] = scan[i];
+                  
+                   // printf("switch [%u] d[%d] detectec at: [%d]ms\n",scan[i],i,now);
+
+                    if(  (scan[BOTAO_PRODUCAO] == 1)  && (scan[i] == 1) ) 
+                    {
+                       // if(manutencao == PRODUZINDO)
+                       // {
+                            if(producao == PARADO) 
+                            {
+                                    producao = PRODUZINDO;
+
+                                    if(manutencao == PRODUZINDO ) printf(topic3InitProd,now*10);
+
+                                    tempoIniciouProducao = xTaskGetTickCount();
+                            }
+                            else 
+                            {
+                                producao = PARADO;
+                                 if(manutencao == PRODUZINDO ) printf(topic3EndProd,now*10);
+                            }
+                       // }
+                        //printf("mudou estado\n");
+                    }
+
+
+
+                    if( i == BOTAO_MANUTENCAO ) //tratar somente botao manutencao
+                    {
+                        if(scan[BOTAO_MANUTENCAO] == 1) //se apertou comeca a contagem de parada
                         {
-                                producao = PRODUZINDO;
-
-                                if(manutencao == PRODUZINDO ) printf(topic3InitProd,now*10);
-
-                                tempoIniciouProducao = xTaskGetTickCount();
+                                manutencao = PARADO;
+                               // producao = PARADO;
+                                
+                                printf(topic2PauseStart,now*10);
+                         //       DEBUG("entrou em parada manutencao\n");
                         }
                         else 
                         {
-                            producao = PARADO;
-                             if(manutencao == PRODUZINDO ) printf(topic3EndProd,now*10);
+                                manutencao = PRODUZINDO;//finalizar a contagem de parda e enviar o evento
+                                printf(topic2PauseStop,now*10);
+                           //      DEBUG("terminou manutencao\n");
+                                
                         }
-                   // }
-                    //printf("mudou estado\n");
-                }
-
-
-
-                if( i == BOTAO_MANUTENCAO ) //tratar somente botao manutencao
-                {
-                    if(scan[BOTAO_MANUTENCAO] == 1) //se apertou comeca a contagem de parada
-                    {
-                            manutencao = PARADO;
-                           // producao = PARADO;
-                            
-                            printf(topic2PauseStart,now*10);
-                     //       DEBUG("entrou em parada manutencao\n");
                     }
-                    else 
+
+                    
+                    if( i == BOTAO_PECAS_DEFEITO )//para definir o tipo de peca a se preduzir
                     {
-                            manutencao = PRODUZINDO;//finalizar a contagem de parda e enviar o evento
-                            printf(topic2PauseStop,now*10);
-                       //      DEBUG("terminou manutencao\n");
-                            
+
+                        if(scan[BOTAO_PECAS_DEFEITO] == 1) pecaSemDefeito = PARADO;
+                        else pecaSemDefeito = PRODUZINDO;
+
+
+
                     }
-                }
+                    
 
-                
-                if( i == BOTAO_PECAS_DEFEITO )//para definir o tipo de peca a se preduzir
-                {
-
-                    if(scan[BOTAO_PECAS_DEFEITO] == 1) pecaSemDefeito = PARADO;
-                    else pecaSemDefeito = PRODUZINDO;
-
-
-
-                }
-                
-
-                if( i == SENSOR_PRODUCAO )
-                {
-
-                    if(producao == PRODUZINDO)  //somente notificar pecas se o estado for produzindo
-                    if(scan[SENSOR_PRODUCAO] == 1) //se houver novo produto
+                    if( i == SENSOR_PRODUCAO )
                     {
-                        if(pecaSemDefeito == PRODUZINDO)   printf(topic1Good,now*10);
-                        else  printf(topic1Bad,now*10);
+
+                        if(producao == PRODUZINDO)  //somente notificar pecas se o estado for produzindo
+                        if(scan[SENSOR_PRODUCAO] == 1) //se houver novo produto
+                        {
+                            if(pecaSemDefeito == PRODUZINDO)   printf(topic1Good,now*10);
+                            else  printf(topic1Bad,now*10);
+
+                        }
+
 
                     }
 
-
-                }
-
+/*                }
+*/
 
 
 /*                snprintf(msg, PUB_MSG_LEN, "Beat %d,%d\r\n", i,scan[i]);
@@ -219,46 +242,57 @@ static void  beat_task(void *pvParameters)
         }
         
 
-        if((producao == PRODUZINDO) && (manutencao != PARADO))
+/*        if(scan[ON_OFF_BT] == 1)
         {
+*/
+            if((producao == PRODUZINDO) && (manutencao != PARADO))
+            {
+                       
+                    toMove = 1; 
                    
-                toMove = 1; 
                
-           
-        }
-        else
-        {
-
-            toMove = 0;
-        }
-
-
-        if(producao == PRODUZINDO)
-        {
-            if(  (xTaskGetTickCount() - tempoIniciouProducao) > 479*100)
+            }
+            else
             {
 
-
-                if(manutencao == PARADO) printf(topic2PauseStop,now*10);
-                    
-               
+                toMove = 0;
+            }
 
 
-                 //producao = PARADO;
-                 printf(topic3EndProd,now*10);
-                  tempoIniciouProducao = xTaskGetTickCount();
-                  printf(topic3InitProd,now*10);
+            if(producao == PRODUZINDO)
+            {
+                if(  (xTaskGetTickCount() - tempoIniciouProducao) > 479*100)
+                {
 
-                if(manutencao == PARADO) printf(topic2PauseStart,now*10);
 
+                    if(manutencao == PARADO) printf(topic2PauseStop,now*10);
+                        
+                   
+
+
+                     //producao = PARADO;
+                     printf(topic3EndProd,now*10);
+                      tempoIniciouProducao = xTaskGetTickCount();
+                      printf(topic3InitProd,now*10);
+
+                    if(manutencao == PARADO) printf(topic2PauseStart,now*10);
+
+
+                }
 
             }
 
-        }
+        
+            n++;
+            if(n%10 == 0)
+            {
+                estado = !estado;
+                gpio_write(linkLedPin, estado);
+            }
 
-
-
-
+ /*       }
+        else toMove = 0;
+*/
     }
 }
 /*
@@ -430,7 +464,7 @@ static void  wifi_task(void *pvParameters)
 */
 
 
-#define PWM1_PIN 12 //d6 pin
+
 
 void taskPwm(void *pvParameters)
 {
@@ -453,9 +487,23 @@ void taskPwm(void *pvParameters)
 
     uint8_t state=0;
 
+
+
+
+
     while(1)
     {
-        vTaskDelay(500 / portTICK_PERIOD_MS);
+
+
+        uint32_t randTimer = hwrand();
+     //deixar variando entre 400 e 900
+
+        randTimer%=500;
+
+
+
+    //    vTaskDelay(500 / portTICK_PERIOD_MS);
+            vTaskDelay((400+ randTimer)/ portTICK_PERIOD_MS);
   //      printf("duty cycle set to %d/UINT16_MAX%%\r\n", count);
 
 
@@ -491,6 +539,15 @@ to move 7860
             
             
         }
+
+
+        //usar d7 e d8 - d7 botao liga/desliga(combinar com led) e d8 saida do led de rede
+
+
+       
+
+
+
     }
 }
 

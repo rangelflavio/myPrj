@@ -7,5 +7,7 @@ relayPortao/firmware
 relayPortao/build
 testePwm/firmware
 testePwm/build
+pocYamaha/firmware
+pocYamaha/build
 *build*
 *firmware*
