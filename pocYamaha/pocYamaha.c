@@ -33,7 +33,7 @@
 
 
 //#define MQTT_HOST ("192.168.23.31")
-#define MQTT_HOST ("172.20.4.190")
+#define MQTT_HOST ("172.20.24.190")
 
 #define MQTT_PORT 25000
 
@@ -42,10 +42,10 @@
 #define WIFI_PASS "ymaitriad0011"
 
 
-/*
-#define WIFI_SSID "TCTSmartPhones"
-#define WIFI_PASS "TCTSMARTPHONES"
-*/
+
+//#define WIFI_SSID "TCTSmartPhones"
+//#define WIFI_PASS "TCTSMARTPHONES"
+
 
 
 #define MAX_INPUT_NUMBER 5
@@ -58,13 +58,14 @@ for(int i = 0; i < MAX_INPUT_NUMBER; i++) //primeiras 4 portas como entrada
 }
 
 
-
+    
 #define PWM1_PIN 12 //d6 pin ouput
 
 
 #define linkLedPin 15
 
 
+//entradas para o POC: SENSOR_PRODUCAO, BOTAO_MANUTENCAO  gpio 14 e gpio 4 - D5 E D2
 #define BOTAO_PRODUCAO 1
 #define BOTAO_MANUTENCAO 2
 #define BOTAO_PECAS_DEFEITO 0
@@ -166,6 +167,12 @@ static void  beat_task(void *pvParameters)
 */
 
 
+
+
+    //consideracoes POC yamaha:  
+    producao = PRODUZINDO;
+    pecaSemDefeito = PRODUZINDO;
+
     while (1)
     {
         vTaskDelayUntil(&xLastWakeTime, 10 / portTICK_PERIOD_MS);
@@ -189,7 +196,9 @@ static void  beat_task(void *pvParameters)
                   
                    // printf("switch [%u] d[%d] detectec at: [%d]ms\n",scan[i],i,now);
 
-                    if(  (scan[BOTAO_PRODUCAO] == 1)  && (scan[i] == 1) ) 
+
+//poc yamaha - sempre em producao
+            /*        if(  (scan[BOTAO_PRODUCAO] == 1)  && (scan[i] == 1) ) 
                     {
                        // if(manutencao == PRODUZINDO)
                        // {
@@ -221,7 +230,7 @@ static void  beat_task(void *pvParameters)
                         //printf("mudou estado\n");
                     }
 
-
+*/
 
                     if( i == BOTAO_MANUTENCAO ) //tratar somente botao manutencao
                     {
@@ -243,7 +252,8 @@ static void  beat_task(void *pvParameters)
                         }
                     }
 
-                    
+//poc yamaha - qualidade com entrada manaual
+          /*          
                     if( i == BOTAO_PECAS_DEFEITO )//para definir o tipo de peca a se preduzir
                     {
 
@@ -253,7 +263,7 @@ static void  beat_task(void *pvParameters)
 
 
                     }
-                    
+            */ 
 
                     if( i == SENSOR_PRODUCAO )
                     {
@@ -313,8 +323,8 @@ static void  beat_task(void *pvParameters)
                 toMove = 0;
             }
 
-
-            if(producao == PRODUZINDO)
+//nao tem este conceito de start/stop
+    /*        if(producao == PRODUZINDO)
             {
                 if(  (xTaskGetTickCount() - tempoIniciouProducao) > 479*100)
                 {
@@ -350,7 +360,7 @@ static void  beat_task(void *pvParameters)
                 }
 
             }
-
+*/
         
             n++;
             if(n%10 == 0)
