@@ -38,13 +38,13 @@
 #define MQTT_PORT 25000
 
 
-#define WIFI_SSID "yma"
-#define WIFI_PASS "ymaitriad0011"
+//#define WIFI_SSID "yma"
+//#define WIFI_PASS "ymaitriad0011"
 
 
 
-//#define WIFI_SSID "TCTSmartPhones"
-//#define WIFI_PASS "TCTSMARTPHONES"
+#define WIFI_SSID "TCTSmartPhones"
+#define WIFI_PASS "TCTSMARTPHONES"
 
 
 
@@ -98,8 +98,16 @@ for(int i = 0; i < MAX_INPUT_NUMBER; i++) //primeiras 4 portas como entrada
 #define DEBUG printf
 
 
+typedef enum
+{
+    ERRO,
+    SEM_SERVIDOR,
+    NORMAL
+}STATUS_COMUNICACAO;
 
-uint8_t toMove = 0;
+
+STATUS_COMUNICACAO comunicacao;
+
 
 
 typedef enum
@@ -264,7 +272,7 @@ static void  beat_task(void *pvParameters)
 
                     }
             */ 
-
+/*
                     if( i == SENSOR_PRODUCAO )
                     {
 
@@ -287,6 +295,31 @@ static void  beat_task(void *pvParameters)
 
 
                     }
+*/
+
+                    if( i == SENSOR_PRODUCAO )
+                    {
+
+                        if(producao == PRODUZINDO)  //somente notificar pecas se o estado for produzindo
+                        if(scan[SENSOR_PRODUCAO] == 1) //se houver novo produto
+                        {
+
+                            if(manutencao == PRODUZINDO)
+                            {
+                                sprintf(buffTemp,topic1Good,now*10);
+                                empilharMensagem(buffTemp);
+                            }
+                                //printf(topic1Good,now*10);
+       
+                        }
+
+
+                    }
+
+
+
+
+
 
 /*                }
 */
@@ -310,6 +343,8 @@ static void  beat_task(void *pvParameters)
 /*        if(scan[ON_OFF_BT] == 1)
         {
 */
+
+        /*
             if((producao == PRODUZINDO) && (manutencao != PARADO))
             {
                        
@@ -322,6 +357,7 @@ static void  beat_task(void *pvParameters)
 
                 toMove = 0;
             }
+            */
 
 //nao tem este conceito de start/stop
     /*        if(producao == PRODUZINDO)
@@ -536,13 +572,16 @@ static void  mqtt_task(void *pvParameters)
         printf("%s: (Re)connecting to server %s ... ",__func__,
                MQTT_HOST);
         ret = network_connect(&mySocket, MQTT_HOST, MQTT_PORT);
-        if( ret ){
+        if( ret )
+        {
+            comunicacao = SEM_SERVIDOR;
             printf("error: %d\n\r", ret);
             taskYIELD();
             continue;
         }
         printf("conectou no socket\n\r");
 
+        comunicacao = NORMAL;
         ret = 1;
         while(ret>0){
 
@@ -557,7 +596,11 @@ static void  mqtt_task(void *pvParameters)
                         xQueueReceive(publish_queue, (void *)msg, 0);
                         printf("ok [%s]desempilhando\n",msg);
                     }
-                    else printf("erro comunicacao - ret:[%d] \n",ret);
+                    else
+                    {
+                     printf("erro comunicacao - ret:[%d] \n",ret);
+                     comunicacao = SEM_SERVIDOR;
+                    }
                 }
                 else temItens = 0;
 
@@ -598,13 +641,21 @@ static void  wifi_task(void *pvParameters)
         while ((status != STATION_GOT_IP) && (retries)){
             status = sdk_wifi_station_get_connect_status();
             printf("%s: status = %d\n\r", __func__, status );
-            if( status == STATION_WRONG_PASSWORD ){
+            if( status == STATION_WRONG_PASSWORD )
+            {
+                comunicacao = ERRO;
                 printf("WiFi: wrong password\n\r");
                 break;
-            } else if( status == STATION_NO_AP_FOUND ) {
+            }
+            else if( status == STATION_NO_AP_FOUND ) 
+            {
+                comunicacao = ERRO;
                 printf("WiFi: AP not found\n\r");
                 break;
-            } else if( status == STATION_CONNECT_FAIL ) {
+            }
+            else if( status == STATION_CONNECT_FAIL ) 
+            {
+                comunicacao = ERRO;
                 printf("WiFi: connection failed\r\n");
                 break;
             }
@@ -633,46 +684,67 @@ static void  wifi_task(void *pvParameters)
 
 void taskPwm(void *pvParameters)
 {
-//    printf("Hello from taskPwm!\r\n");
-    uint32_t const init_count = 1441;
-    uint32_t count = init_count;
-
-
-
     uint8_t pins[1];
     //printf("pwm_init(1, [%d])\n",PWM1_PIN);
     pins[0] = PWM1_PIN;
     pwm_init(1, pins, false);
    // printf("pwm_set_freq(1000)     # 1 kHz\n");
-    pwm_set_freq(50);
+    pwm_set_freq(2);
    // printf("pwm_set_duty(UINT16_MAX/2)     # 50%%\n");
-    pwm_set_duty(UINT16_MAX/2);
+    pwm_set_duty(0);
    // printf("pwm_start()\n");
     pwm_start();
 
     uint8_t state=0;
 
 
+/*
 
+
+typedef enum
+{
+    ERRO,
+    SEM_SERVIDOR,
+    SEM_REDE,
+    NORMAL
+}STATUS_COMUNICACAO;
+
+
+STATUS_COMUNICACAO comunicacao;
+
+
+*/
 
 
     while(1)
     {
 
 
-        uint32_t randTimer = hwrand();
-     //deixar variando entre 400 e 900
+       // uint32_t randTimer = hwrand();
 
-        randTimer%=500;
-        vTaskDelay((400+ randTimer)/ portTICK_PERIOD_MS);
-        if(toMove)
+        
+
+        if(comunicacao == ERRO)
         {
-            pwm_set_duty(count);
-              count += UINT16_MAX/50;
-            if (count > 3930) count = init_count;      
-            
+            pwm_set_duty(0);
         }
 
+      
+        if(comunicacao == SEM_SERVIDOR)
+        {
+            pwm_set_duty(UINT16_MAX);
+        }
+
+
+
+        if(comunicacao == NORMAL)
+        {
+           pwm_set_duty(UINT16_MAX/2);
+        }
+
+vTaskDelay( 500 / portTICK_PERIOD_MS );
+
+ 
 
     }
 }
